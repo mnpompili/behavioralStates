@@ -1,4 +1,4 @@
-function [freezing,quietWake,SWS,REM] = behavioralStates(session,spindleChannel,thetaChannel,speed,speedTresh,varargin)
+function [freezing,quietWake,SWS,REM] = behavioralStates(pfcLFP,hpcLFP,speed,speedTreshold,varargin)
 %  behavioralStates     determines freezing, quiet wakefulness, slow wave sleep, and REM sleep based 
 %                       on animal motor activity and LFP.
 %
@@ -6,10 +6,10 @@ function [freezing,quietWake,SWS,REM] = behavioralStates(session,spindleChannel,
 %
 %    [freezing,quietWake,SWS,REM] = behavioralStates(session,spindleChannel,thetaChannel,speed,speedTresh,<options>)
 %
-%    spindleChannel     channel to use for spindle LFP
-%    thetaChannel       channel to use for theta LFP 
+%    pfcLFP             prefrontal LFP with visible spindles (in [times values] format, 1250 Hz recommended)
+%    hpcLFP             hippocampal LFP with good theta (set to empty to use prefrontal channel only)
 %    speed              two-column matrix with time stamps in the first column and speed values in the second
-%    speedTresh         treshold value to define immobility
+%    speedTreshold         treshold value to define immobility
 %    <options>          optional list of property-value pairs (see table below)
 %
 %    =============================================================================================================
@@ -49,7 +49,7 @@ minSleepLenght = 30;
 freezingMoveTolerance = 0.2;
 minFreezingLenght = 2;
 QuietMoveTolerance = 0.5;
-minQuietLenght = 2
+minQuietLenght = 2;
 %% Parse options
 for i = 1:2:length(varargin),
 	if ~ischar(varargin{i}),
@@ -63,8 +63,8 @@ for i = 1:2:length(varargin),
 			end
 		case 'sleepMoveTolerance',
 			sleepMoveTolerance = lower(varargin{i+1});
-			if ~isdscalar(sleepMoveTolerance,'>=0'),
-				error('Incorrect value for property ''sleepMoveTolerance'' (type ''help <a href="matlab:help behavioralStates">behavioralStates</a>'' for details).');
+            if ~isdscalar(sleepMoveTolerance,'>=0'),
+                error('Incorrect value for property ''sleepMoveTolerance'' (type ''help <a href="matlab:help behavioralStates">behavioralStates</a>'' for details).');
             end
         case 'SWStoREMmaxTransition',
             SWStoREMmaxTransition = lower(varargin{i+1});
@@ -105,31 +105,20 @@ for i = 1:2:length(varargin),
 			error(['Unknown property ''' num2str(varargin{i}) ''' (type ''help <a href="matlab:help behavioralStates">behavioralStates</a>'' for details).']);
 	end
 end
-%% Retrieve session info
-SetCurrentSessionParameters(session,'verbose','off');
-[folder,sessionID] = fileparts(session);
-events = LoadEvents(fullfile(folder,[sessionID '.cat.evt']));
-catIntervals = reshape(events.time,2,[])';
-%% get LFP data
-tic
-disp('loading LFP...')
-pfcLFP = GetLFP(spindleChannel,'chunksize',120000);
-hpcLFP = GetLFP(thetaChannel,'chunksize',120000);
-elapsedTime = toc;
-fprintf('...done! (this took %.2f seconds)\n',elapsedTime);
 %% Get immobility periods
+rangeTime = pfcLFP([1 end],1)';
 tic
 disp('Detecting immobility...')
 speed(isnan(speed(:,2)),:) = [];
 t = speed(:,1);
-t0 = [0; speed(:,1); max(catIntervals(:))];
-% Find holes in data:
+t0 = [0; speed(:,1); rangeTime(2)];
+% Find intervals where speed data is missing
 noData = [];
 if any(diff(t0)>1)  
-    noData = t0(bsxfun(@plus,FindInterval(diff(t0)>1),[0 1])); % more than 1250s without data
+    noData = t0(bsxfun(@plus,FindInterval(diff(t0)>1),[0 1])); % more than 1s without data
 end
 speed(:,2) = Smooth(speed(:,2),10);
-immobility = t(FindInterval(speed(:,2)<speedTresh));
+immobility = t(FindInterval(speed(:,2)<speedTreshold));
 immobility(diff(immobility,[],2)<immobilityTolerance,:) = []; % pauses < immobilityTolerance don't count
 movement = SubtractIntervals([0 speed(end,1)],[noData;immobility]); % these are the periods we should exclude when detecting sleep and freezing
 % Make sure we're not excluding large periods of time with missing speed data: remove each 'movement' period for which we don't have data
@@ -141,14 +130,8 @@ fprintf('...done! (this took %.2f seconds)\n',elapsedTime);
 %% Get high spindle power periods and (sw)sleep
 tic
 disp('Detecting Slow Wave Sleep...')
-spindleLFP = Filter0(pfcLFP,[9 17]);
-% remove from final function for the public
-ratNumber = @(x) str2double(x((3:5)+min(strfind(lower(x),'rat'))));
-rat = ratNumber(sessionID);
-if rat==386 | rat== 392 & ~ismember(spindleChannel,[19 76]) | rat==370, [~,bad] = CleanLFP(spindleLFP,'thresholds',[10 10]);
-elseif  rat==399 | rat==401, [~,bad] = CleanLFP(spindleLFP,'thresholds',[7 10]);
-else  [~,bad] = CleanLFP(spindleLFP,'thresholds',[5 10]);
-end
+spindleLFP = FilterLFP(pfcLFP,'passband',[9 17]);
+[~,bad] = CleanLFP(spindleLFP);
 tLFP = spindleLFP(:,1);
 badPeriods = tLFP(FindInterval(bad));
 noData = ConsolidateIntervals(sortrows([noData;badPeriods]));
@@ -156,7 +139,7 @@ noData = ConsolidateIntervals(sortrows([noData;badPeriods]));
 spindlePower(bad,2) = nan;
 spindlePower = Shrink(spindlePower,1250,1); % downsample to one value per second
 tSpindles = spindlePower(:,1);
-smoothedPower = nansmooth(spindlePower(:,end),14); % smooth with a 14-s window
+smoothedPower = spindlePower(:,end); smoothedPower(~isnan(smoothedPower)) = Smooth(spindlePower(~isnan(smoothedPower),end),14); % smooth with a 14-s window
 k = kmeans(smoothedPower,2); % two clear groups, the distribution should be obviously bimodal
 if mean(smoothedPower(k==1))>mean(smoothedPower(k==2)), k=3-k; end % Make sure k=2 corresponds to the high spindlepower group
 highSpindles = tSpindles(FindInterval(k==2));
@@ -168,13 +151,17 @@ fprintf('...done! (this took %.2f seconds)\n',elapsedTime);
 %% Get high theta/delta periods and REM sleep
 tic
 disp('Detecting REM sleep...')
-hpcLFP(:,2) = zscore(hpcLFP(:,2));
-[w,wt,wf] = WaveletSpectrogramRaw(hpcLFP,'range',[1 15],'resolution',1);
-q = Smooth(Shrink(w,1,2500),[0 1]);
-t = Shrink(wt(:),2500,1);
-if spindleChannel~=thetaChannel
+if ~isempty(hpcLPF)
+    hpcLFP(:,2) = zscore(hpcLFP(:,2));
+    [w,wTimestamps,wFrequencies] = helper_WaveletSpectrogram(hpcLFP,'range',[1 15],'resolution',1);
+    q = Smooth(Shrink(w,1,2500),[0 1]);
+    t = Shrink(wTimestamps(:),2500,1);
     REM = t(FindInterval(q(4,:)>nanmean(q(1:3,:)))); % if power in the theta frequency band (7.5 Hz) is higher than low frequency power
 else
+    pfcLFP(:,2) = zscore(pfcLFP(:,2));
+    [w,wTimestamps,wFrequencies] = helper_WaveletSpectrogram(pfcLFP,'range',[1 15],'resolution',1);
+    q = Smooth(Shrink(w,1,2500),[0 1]);
+    t = Shrink(wTimestamps(:),2500,1);
     thetaDelta = q(4,:)./nanmean(q(1:3,:));
     smoothedThetaDelta = Smooth(thetaDelta,8);
     [kkk,threshold,em(i+1)] = Otsu(smoothedThetaDelta);
@@ -208,7 +195,7 @@ tic
 disp('Detecting freezing...')
 addTimeAround = @(x) [x(:,1)-restPriorSWS x(:,2)]; % add 120 s before each sleep epoch; this cannot be freezing
 nonfreezing = sortrows([addTimeAround(SWS); movement; addTimeAround(REM)]);
-freezing = SubtractIntervals(catIntervals([1 end]),sortrows([nonfreezing;noData]));
+freezing = SubtractIntervals([0 totalTime],sortrows([nonfreezing;noData]));
 freezing = ConsolidateIntervals(freezing,'epsilon',freezingMoveTolerance);
 freezing(diff(freezing,[],2)<minFreezingLenght,:) = []; % freezing needs to be at least minFreezingLenght long
 elapsedTime = toc;
@@ -216,7 +203,7 @@ fprintf('...done! (this took %.2f seconds)\n',elapsedTime);
 %% Get quietWake
 tic
 disp('Detecting quiet wakefulness...')
-quietWake = SubtractIntervals(catIntervals([1 end]),[REM;SWS;freezing;movement]);
+quietWake = SubtractIntervals(rangeTime,[REM;SWS;freezing;movement]);
 quietWake = ConsolidateIntervals(quietWake,'epsilon',QuietMoveTolerance);
 quietWake(diff(quietWake,[],2)<minQuietLenght,:) = [];
 elapsedTime = toc;
