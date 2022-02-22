@@ -1,4 +1,4 @@
-function [freezing,quietWake,SWS,REM] = behavioralStates(pfcLFP,hpcLFP,speed,speedTreshold,varargin)
+function [freezing,quietWake,SWS,REM,movement] = behavioralStates(pfcLFP,hpcLFP,speed,speedTreshold,varargin)
 %  behavioralStates     determines freezing, quiet wakefulness, slow wave sleep, and REM sleep based 
 %                       on animal motor activity and LFP.
 %
@@ -9,6 +9,7 @@ function [freezing,quietWake,SWS,REM] = behavioralStates(pfcLFP,hpcLFP,speed,spe
 %    pfcLFP             prefrontal LFP with visible spindles (in [times values] format, 1250 Hz recommended)
 %    hpcLFP             hippocampal LFP with good theta (set to empty to use prefrontal channel only)
 %    speed              two-column matrix with time stamps in the first column and speed values in the second
+%                       We recommend speed be smoothed with a Gaussian window of XX s before calling behavioralStates.
 %    speedTreshold         treshold value to define immobility
 %    <options>          optional list of property-value pairs (see table below)
 %
@@ -117,7 +118,6 @@ noData = [];
 if any(diff(t0)>1)  
     noData = t0(bsxfun(@plus,FindInterval(diff(t0)>1),[0 1])); % more than 1s without data
 end
-speed(:,2) = Smooth(speed(:,2),10);
 immobility = t(FindInterval(speed(:,2)<speedTreshold));
 immobility(diff(immobility,[],2)<immobilityTolerance,:) = []; % pauses < immobilityTolerance don't count
 if size(immobility,2)==1, immobility = immobility'; end
@@ -132,7 +132,7 @@ fprintf('...done! (this took %.2f seconds)\n',elapsedTime);
 tic
 disp('Detecting Slow Wave Sleep...')
 spindleLFP = FilterLFP(pfcLFP,'passband',[9 17]);
-[~,bad] = CleanLFP(spindleLFP);
+[~,bad,noisyIntervals] = CleanLFP(spindleLFP);
 tLFP = spindleLFP(:,1);
 badPeriods = tLFP(FindInterval(bad));
 noData = ConsolidateIntervals(sortrows([noData;badPeriods]));
@@ -195,7 +195,7 @@ fprintf('...done! (this took %.2f seconds)\n',elapsedTime);
 tic
 disp('Detecting freezing...')
 addTimeAround = @(x) [x(:,1)-restPriorSWS x(:,2)]; % add 120 s before each sleep epoch; this cannot be freezing
-nonfreezing = sortrows([addTimeAround(SWS); movement; addTimeAround(REM)]);
+nonfreezing = sortrows([addTimeAround(SWS); movement; noisyIntervals; addTimeAround(REM)]); % If data were too noisy to detect SWS/REM that would not mean the animal is freezing
 freezing = SubtractIntervals(rangeTime,sortrows([nonfreezing;noData]));
 freezing = ConsolidateIntervals(freezing,'epsilon',freezingMoveTolerance);
 freezing(diff(freezing,[],2)<minFreezingLenght,:) = []; % freezing needs to be at least minFreezingLenght long
@@ -204,7 +204,7 @@ fprintf('...done! (this took %.2f seconds)\n',elapsedTime);
 %% Get quietWake
 tic
 disp('Detecting quiet wakefulness...')
-quietWake = SubtractIntervals(rangeTime,[REM;SWS;freezing;movement]);
+quietWake = SubtractIntervals(rangeTime,[REM;SWS;freezing;movement;noisyIntervals]);
 quietWake = ConsolidateIntervals(quietWake,'epsilon',QuietMoveTolerance);
 quietWake(diff(quietWake,[],2)<minQuietLenght,:) = [];
 elapsedTime = toc;
