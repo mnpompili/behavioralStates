@@ -120,6 +120,7 @@ end
 speed(:,2) = Smooth(speed(:,2),10);
 immobility = t(FindInterval(speed(:,2)<speedTreshold));
 immobility(diff(immobility,[],2)<immobilityTolerance,:) = []; % pauses < immobilityTolerance don't count
+if size(immobility,2)==1, immobility = immobility'; end
 movement = SubtractIntervals([0 speed(end,1)],[noData;immobility]); % these are the periods we should exclude when detecting sleep and freezing
 % Make sure we're not excluding large periods of time with missing speed data: remove each 'movement' period for which we don't have data
 midpoint = mean(movement,2);
@@ -151,7 +152,7 @@ fprintf('...done! (this took %.2f seconds)\n',elapsedTime);
 %% Get high theta/delta periods and REM sleep
 tic
 disp('Detecting REM sleep...')
-if ~isempty(hpcLPF)
+if ~isempty(hpcLFP)
     hpcLFP(:,2) = zscore(hpcLFP(:,2));
     [w,wTimestamps,wFrequencies] = helper_WaveletSpectrogram(hpcLFP,'range',[1 15],'resolution',1);
     q = Smooth(Shrink(w,1,2500),[0 1]);
@@ -195,7 +196,7 @@ tic
 disp('Detecting freezing...')
 addTimeAround = @(x) [x(:,1)-restPriorSWS x(:,2)]; % add 120 s before each sleep epoch; this cannot be freezing
 nonfreezing = sortrows([addTimeAround(SWS); movement; addTimeAround(REM)]);
-freezing = SubtractIntervals([0 totalTime],sortrows([nonfreezing;noData]));
+freezing = SubtractIntervals(rangeTime,sortrows([nonfreezing;noData]));
 freezing = ConsolidateIntervals(freezing,'epsilon',freezingMoveTolerance);
 freezing(diff(freezing,[],2)<minFreezingLenght,:) = []; % freezing needs to be at least minFreezingLenght long
 elapsedTime = toc;
