@@ -1,4 +1,4 @@
-function [freezing,quietWake,SWS,REM,movement] = behavioralStates(pfcLFP,hpcLFP,speed,speedTreshold,varargin)
+function [freezing,quietWake,SWS,REM,movement] = behavioralStates(corticalLFP,hpcLFP,speed,speedTreshold,varargin)
 %  behavioralStates     determines freezing, quiet wakefulness, slow wave sleep, and REM sleep based 
 %                       on animal motor activity and LFP.
 %
@@ -6,11 +6,11 @@ function [freezing,quietWake,SWS,REM,movement] = behavioralStates(pfcLFP,hpcLFP,
 %
 %    [freezing,quietWake,SWS,REM] = behavioralStates(session,spindleChannel,thetaChannel,speed,speedTresh,<options>)
 %
-%    pfcLFP             prefrontal LFP with visible spindles (in [times values] format, 1250 Hz recommended)
-%    hpcLFP             hippocampal LFP with good theta (set to empty to use prefrontal channel only)
+%    corticalLFP        cortical LFP with visible spindles (in [times values] format, 1250 Hz recommended)
+%    hpcLFP             hippocampal LFP with good theta (set to empty to use cortical channel only)
 %    speed              two-column matrix with time stamps in the first column and speed values in the second
-%                       We recommend speed be smoothed with a Gaussian window of XX s before calling behavioralStates.
-%    speedTreshold         treshold value to define immobility
+%                       We recommend speed be smoothed with a Gaussian window of 1 s before calling behavioralStates.
+%    speedTreshold      treshold value to define immobility
 %    <options>          optional list of property-value pairs (see table below)
 %
 %    =============================================================================================================
@@ -30,10 +30,8 @@ function [freezing,quietWake,SWS,REM,movement] = behavioralStates(pfcLFP,hpcLFP,
 %    quietWake      quiet wakefulness periods intervals
 %    SWS            slow wave sleep periods intervals
 %    REM            REM sleep periods intervals
+%    movement       movement periods intervals
 %
-%  SEE
-%
-%    See also angularSpeed to compute animal speed from gyroscopic data.
 %
 % Copyright (C) 2019-2022 by Ralitsa Todorova & Marco Pompili
 %
@@ -107,7 +105,7 @@ for i = 1:2:length(varargin),
 	end
 end
 %% Get immobility periods
-rangeTime = pfcLFP([1 end],1)';
+rangeTime = corticalLFP([1 end],1)';
 tic
 disp('Detecting immobility...')
 speed(isnan(speed(:,2)),:) = [];
@@ -131,7 +129,7 @@ fprintf('...done! (this took %.2f seconds)\n',elapsedTime);
 %% Get high spindle power periods and (sw)sleep
 tic
 disp('Detecting Slow Wave Sleep...')
-spindleLFP = FilterLFP(pfcLFP,'passband',[9 17]);
+spindleLFP = FilterLFP(corticalLFP,'passband',[9 17]);
 [~,bad,noisyIntervals] = CleanLFP(spindleLFP);
 tLFP = spindleLFP(:,1);
 badPeriods = tLFP(FindInterval(bad));
@@ -159,17 +157,17 @@ if ~isempty(hpcLFP)
     t = Shrink(wTimestamps(:),2500,1);
     REM = t(FindInterval(q(4,:)>nanmean(q(1:3,:)))); % if power in the theta frequency band (7.5 Hz) is higher than low frequency power
 else
-    pfcLFP(:,2) = zscore(pfcLFP(:,2));
-    [w,wTimestamps,wFrequencies] = helper_WaveletSpectrogram(pfcLFP,'range',[1 15],'resolution',1);
+    corticalLFP(:,2) = zscore(corticalLFP(:,2));
+    [w,wTimestamps,wFrequencies] = helper_WaveletSpectrogram(corticalLFP,'range',[1 15],'resolution',1);
     q = Smooth(Shrink(w,1,2500),[0 1]);
     t = Shrink(wTimestamps(:),2500,1);
     thetaDelta = q(4,:)./nanmean(q(1:3,:));
     smoothedThetaDelta = Smooth(thetaDelta,8);
-    [kkk,threshold,em(i+1)] = Otsu(smoothedThetaDelta);
-    if max(minmax(smoothedThetaDelta(kkk==1)))<max(minmax(smoothedThetaDelta(kkk==2))) && sum(kkk==2)<sum(kkk==1)
-        REM = t(FindInterval(kkk'==2));
-    elseif max(minmax(smoothedThetaDelta(kkk==2)))<max(minmax(smoothedThetaDelta(kkk==1))) && sum(kkk==1)<sum(kkk==2)
-        REM = t(FindInterval(kkk'==1));
+    [kk,threshold,em(i+1)] = Otsu(smoothedThetaDelta);
+    if max(minmax(smoothedThetaDelta(kk==1)))<max(minmax(smoothedThetaDelta(kk==2))) && sum(kk==2)<sum(kk==1)
+        REM = t(FindInterval(kk'==2));
+    elseif max(minmax(smoothedThetaDelta(kk==2)))<max(minmax(smoothedThetaDelta(kk==1))) && sum(kk==1)<sum(kk==2)
+        REM = t(FindInterval(kk'==1));
     else
         error('more REM intervals than SWS')
     end        
