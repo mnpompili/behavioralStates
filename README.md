@@ -1,10 +1,8 @@
 # behavioralStates: a MATLAB function to determine rodents behavioral states based on motor activity and LFP/EEG recording
 
-[**behavioralStates**](https://github.com/mnpompili/behavioralStates) is an open-source MATLAB function to automatically detected behavioral and brain states in rodents freely moving electrophsyiology experiments
+[**behavioralStates**](https://github.com/mnpompili/behavioralStates) is an open-source MATLAB function to automatically detected behavioral and brain states in rodents freely moving electrophsyiology experiments.
 
-**behavioralStates** applies a method described in [this paper](www.addresstothepaper.com).
-
-This work was motivated by the need to automatically discriminate freezing from sleep states, which was not possible with previously available sleep detection algorithms.
+This function applies an algorithm described in [Pompili and Todorova (2022)](www.addresstothepaper.com), a work motivated by the need to automatically discriminate freezing from sleep states, which was not possible with previously available sleep detection techniques in the absence of olfactory bulb recordings. This method only requires 1) data about animal motor activity (which can be retrieved from video recording, position tracking, EMG, inertial measurements, or other sensors) and 2) at least 1 channel of cortical LFP/EEG recordings.  
 
 Briefly **behavioralStates**: 
 1) Detects immobility from speed data.  
@@ -55,3 +53,14 @@ OUTPUT:
 ## Credits
 
 **behavioralStates** is developed and maintained by [Ralitsa Todorova](https://braincomputation.org/people/) and [Marco Pompili](http://www.normalesup.org/~pompili/)
+
+## Questions
+
+Please create an issue for bugs / usage problems.
+
+## Licence
+
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
