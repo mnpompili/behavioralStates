@@ -4,7 +4,7 @@
 
 This function applies an algorithm described in [Pompili and Todorova (2022)](www.addresstothepaper.com), a work motivated by the need to automatically discriminate freezing from sleep states, which was not possible with previously available sleep detection techniques in the absence of olfactory bulb recordings. This method only requires 1) data about animal motor activity (which can be retrieved from video recording, position tracking, EMG, inertial measurements, or other sensors) and 2) at least 1 channel of cortical LFP/EEG recordings.  
 
-Briefly **behavioralStates**: 
+Briefly, **behavioralStates**: 
 1) Detects immobility from speed data.  
 2) Among immobility periods, SWS is then detected with the smoothed spindle power. 
 3) From the remaining immobility, REM sleep is marked by high theta/delta periods following SWS. 
